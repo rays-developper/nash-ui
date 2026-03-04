@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ナッシュ均衡計算機 | Nash Equilibrium Calculator</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/javascript-lp-solver@0.4.24/prod/solver.min.js"></script>
+  <style>
+    :root {
+      --bg-dark:    #0f0f1a;
+      --bg-card:    #1a1a2e;
+      --bg-deep:    #16213e;
+      --bg-input:   #0d1117;
+      --accent:     #7c3aed;
+      --accent-lt:  #a855f7;
+      --accent-glow:rgba(124,58,237,.3);
+      --text:       #e2e8f0;
+      --text-dim:   #94a3b8;
+      --border:     #334155;
+      --success:    #10b981;
+      --error:      #ef4444;
+      --warning:    #f59e0b;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #1a0533 0%, #0d0d1f 100%);
+      border-bottom: 1px solid var(--accent);
+      padding: 2rem 1rem;
+      text-align: center;
+    }
+    header h1 {
+      font-size: clamp(1.6rem, 5vw, 2.5rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, #a855f7 0%, #6d28d9 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: .4rem;
+    }
+    header p { color: var(--text-dim); font-size: .9rem; }
+
+    /* ── Layout ── */
+    .container { max-width: 1400px; margin: 0 auto; padding: 2rem 1rem; }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent-lt);
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    /* ── Form elements ── */
+    select, input[type="text"], input[type="number"] {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: .45rem .75rem;
+      border-radius: 6px;
+      font-size: .9rem;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    /* ── Buttons ── */
+    button {
+      padding: .45rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: .9rem;
+      font-weight: 500;
+      transition: background .18s, box-shadow .18s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-lt); box-shadow: 0 0 14px var(--accent-glow); }
+    .btn-secondary { background: #334155; color: var(--text); }
+    .btn-secondary:hover { background: #475569; }
+    .btn-danger { background: var(--error); color: #fff; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-sm { padding: .25rem .6rem; font-size: .8rem; }
+    .btn-calc { padding: .75rem 2.5rem; font-size: 1.05rem; font-weight: 700; letter-spacing: .02em; }
+
+    /* ── Controls row ── */
+    .controls-grid { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+    .ctrl-label { font-size: .8rem; color: var(--text-dim); display: block; margin-bottom: 4px; }
+
+    /* ── Matrix table ── */
+    .table-wrapper { overflow: auto; max-height: 560px; border-radius: 8px; }
+    .matrix-table { border-collapse: collapse; min-width: 100%; }
+    .matrix-table th, .matrix-table td { border: 1px solid var(--border); padding: 3px; }
+    .matrix-table th {
+      background: var(--bg-deep);
+      color: var(--accent-lt);
+      font-size: .78rem;
+      text-align: center;
+      white-space: nowrap;
+      position: sticky;
+    }
+    .matrix-table th.col-header-row { top: 0; z-index: 2; }
+    .matrix-table td.row-header-col { position: sticky; left: 0; z-index: 1; background: var(--bg-deep); }
+
+    .name-input {
+      background: transparent;
+      border: none;
+      color: var(--accent-lt);
+      font-size: .78rem;
+      font-weight: 600;
+      text-align: center;
+      width: 100%;
+      min-width: 72px;
+    }
+    .name-input:focus { outline: none; background: rgba(124,58,237,.15); border-radius: 3px; }
+
+    .val-input {
+      background: var(--bg-input);
+      border: 1px solid transparent;
+      color: var(--text);
+      text-align: center;
+      width: 68px;
+      padding: 4px;
+      border-radius: 4px;
+      font-size: .85rem;
+    }
+    .val-input:focus { outline: none; border-color: var(--accent); background: var(--bg-deep); }
+    .val-input.invalid { border-color: var(--error) !important; background: rgba(239,68,68,.08); }
+
+    /* ── Results ── */
+    #resultsSection {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity .4s ease, transform .4s ease;
+    }
+    #resultsSection.visible { opacity: 1; transform: translateY(0); }
+
+    .game-value-box {
+      text-align: center;
+      padding: 1.5rem;
+      background: linear-gradient(135deg, rgba(124,58,237,.22), rgba(109,40,217,.1));
+      border-radius: 10px;
+      margin-bottom: 1.5rem;
+    }
+    .game-value-box .label { font-size: .85rem; color: var(--text-dim); }
+    .game-value-box .big-val {
+      font-size: clamp(2rem, 6vw, 3.2rem);
+      font-weight: 800;
+      color: var(--accent-lt);
+      line-height: 1.1;
+    }
+    .game-value-box .note { font-size: .8rem; color: var(--text-dim); margin-top: .4rem; }
+
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 700px) { .charts-grid { grid-template-columns: 1fr; } }
+
+    .chart-panel { background: var(--bg-deep); border-radius: 10px; padding: 1.2rem; }
+    .chart-panel h3 { font-size: .95rem; color: var(--accent-lt); margin-bottom: .8rem; }
+
+    .strat-list { list-style: none; margin-top: .9rem; }
+    .strat-item {
+      display: flex;
+      align-items: center;
+      gap: .65rem;
+      padding: .45rem 0;
+      border-bottom: 1px solid var(--border);
+      transition: opacity .3s;
+    }
+    .strat-item.zero-strat { opacity: .35; }
+    .strat-name { flex: 1; font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .strat-bar-wrap {
+      width: 100px;
+      height: 7px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .strat-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-lt));
+      border-radius: 4px;
+      transition: width .5s ease;
+    }
+    .strat-prob { font-size: .85rem; font-weight: 700; min-width: 54px; text-align: right; }
+    .badge {
+      font-size: .68rem;
+      font-weight: 700;
+      padding: .15rem .4rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .badge-opt { background: rgba(16,185,129,.2); color: var(--success); }
+    .badge-zero { background: rgba(100,116,139,.2); color: var(--text-dim); }
+
+    /* ── Saved ── */
+    .saved-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .9rem; margin-top: 1rem; }
+    .saved-item {
+      background: var(--bg-deep);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .9rem;
+      cursor: pointer;
+      transition: border-color .2s, box-shadow .2s;
+      position: relative;
+    }
+    .saved-item:hover { border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
+    .saved-item-name { font-weight: 600; font-size: .9rem; margin-bottom: .3rem; }
+    .saved-item-info { font-size: .75rem; color: var(--text-dim); }
+    .saved-del-btn {
+      position: absolute;
+      top: .5rem;
+      right: .5rem;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: .1rem .3rem;
+      line-height: 1;
+      border-radius: 4px;
+    }
+    .saved-del-btn:hover { color: var(--error); background: rgba(239,68,68,.12); }
+
+    /* ── Misc ── */
+    .error-banner {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      background: rgba(239,68,68,.12);
+      border: 1px solid var(--error);
+      color: var(--error);
+      border-radius: 6px;
+      padding: .65rem 1rem;
+      margin-top: .9rem;
+      font-size: .9rem;
+    }
+    .no-saved { color: var(--text-dim); font-size: .9rem; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent-lt);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🎲 ナッシュ均衡計算機</h1>
+  <p>Nash Equilibrium Calculator — ゼロ和ゲームの最適混合戦略を線形計画法で計算します</p>
+</header>
+
+<main>
+<div class="container">
+
+  <!-- ── Controls ── -->
+  <div class="card">
+    <div class="card-title">⚙️ 設定</div>
+    <div class="controls-grid">
+      <div>
+        <span class="ctrl-label">テンプレート読み込み</span>
+        <select id="templateSelect" onchange="loadTemplate(this.value)" style="min-width:260px;">
+          <option value="">── テンプレートを選択 ──</option>
+          <option value="rps">標準のじゃんけん (3×3)</option>
+          <option value="rps_asymm">非対称じゃんけん (3×3・グー報酬×10)</option>
+          <option value="pokemon">ポケモンタイプ相性（単一タイプ 18×18）</option>
+        </select>
+      </div>
+      <div>
+        <span class="ctrl-label">行（プレイヤー1の戦略）</span>
+        <div style="display:flex;gap:.35rem;">
+          <button class="btn-secondary btn-sm" onclick="addRow()">＋ 行追加</button>
+          <button class="btn-secondary btn-sm" onclick="removeRow()">－ 行削除</button>
+        </div>
+      </div>
+      <div>
+        <span class="ctrl-label">列（プレイヤー2の戦略）</span>
+        <div style="display:flex;gap:.35rem;">
+          <button class="btn-secondary btn-sm" onclick="addCol()">＋ 列追加</button>
+          <button class="btn-secondary btn-sm" onclick="removeCol()">－ 列削除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Matrix ── -->
+  <div class="card">
+    <div class="card-title">📊 利得行列（プレイヤー1の視点・ゼロ和ゲーム）</div>
+    <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:.9rem;">
+      行 ＝ プレイヤー1の戦略、列 ＝ プレイヤー2の戦略。各セルにはプレイヤー1の利得を入力してください。
+    </p>
+    <div class="table-wrapper">
+      <table class="matrix-table" id="matrixTable"></table>
+    </div>
+  </div>
+
+  <!-- ── Actions ── -->
+  <div class="card">
+    <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:center;">
+      <button class="btn-primary btn-calc" onclick="calculate()">⚡ ナッシュ均衡を計算</button>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="saveName" placeholder="保存名を入力..." style="min-width:200px;">
+        <button class="btn-secondary" onclick="saveMatrix()">💾 保存</button>
+      </div>
+    </div>
+    <div id="errorMsg"></div>
+  </div>
+
+  <!-- ── Results ── -->
+  <div class="card" id="resultsSection" style="display:none;">
+    <div class="card-title">🏆 計算結果</div>
+
+    <div class="game-value-box">
+      <div class="label">ゲームの価値（期待利得）</div>
+      <div class="big-val" id="gameValueDisplay">—</div>
+      <div class="note" id="gameValueNote"></div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-panel">
+        <h3>🟣 プレイヤー1の最適混合戦略</h3>
+        <canvas id="chart1"></canvas>
+        <ul class="strat-list" id="stratList1"></ul>
+      </div>
+      <div class="chart-panel">
+        <h3>🔵 プレイヤー2の最適混合戦略</h3>
+        <canvas id="chart2"></canvas>
+        <ul class="strat-list" id="stratList2"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Saved ── -->
+  <div class="card">
+    <div class="card-title">📁 保存済みマトリクス</div>
+    <div id="savedList"></div>
+  </div>
+
+</div><!-- /container -->
+</main>
+
+<script>
+// ================================================================
+// Data & state
+// ================================================================
+const MAX_DIM = 30;
+
+let state = {
+  rows: 3,
+  cols: 3,
+  rowNames: ['グー', 'チョキ', 'パー'],
+  colNames: ['グー', 'チョキ', 'パー'],
+  values: [
+    [ 0,  1, -1],
+    [-1,  0,  1],
+    [ 1, -1,  0]
+  ]
+};
+
+// Named constants (avoid magic numbers scattered through code)
+const LP_EPSILON        = 1e-6;  // minimum shift to ensure strictly-positive matrix
+const STRATEGY_THRESHOLD = 1e-4; // probability below which a strategy is considered "not used"
+const BALANCE_THRESHOLD  = 1e-6; // game-value below which the game is considered balanced
+
+// ================================================================
+// Templates
+// ================================================================
+const POKE_TYPES = [
+  'ノーマル','ほのお','みず','でんき','くさ','こおり',
+  'かくとう','どく','じめん','ひこう','エスパー','むし',
+  'いわ','ゴースト','ドラゴン','あく','はがね','フェアリー'
+];
+
+// A[i][j] = type-i attack effectiveness against type-j defender (Gen 6+)
+// Columns: Normal Fire Water Electric Grass Ice Fighting Poison Ground Flying Psychic Bug Rock Ghost Dragon Dark Steel Fairy
+const POKE_CHART = [
+  // ノーマル
+  [1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   0.5, 0,   1,   1,   0.5, 1  ],
+  // ほのお
+  [1,   0.5, 0.5, 1,   2,   2,   1,   1,   1,   1,   1,   2,   0.5, 1,   0.5, 1,   2,   1  ],
+  // みず
+  [1,   2,   0.5, 1,   0.5, 1,   1,   1,   2,   1,   1,   1,   2,   1,   0.5, 1,   1,   1  ],
+  // でんき
+  [1,   1,   2,   0.5, 0.5, 1,   1,   1,   0,   2,   1,   1,   1,   1,   0.5, 1,   1,   1  ],
+  // くさ
+  [1,   0.5, 2,   1,   0.5, 1,   1,   0.5, 2,   0.5, 1,   0.5, 2,   1,   0.5, 1,   0.5, 1  ],
+  // こおり
+  [1,   0.5, 0.5, 1,   2,   0.5, 1,   1,   2,   2,   1,   1,   1,   1,   2,   1,   0.5, 1  ],
+  // かくとう
+  [2,   1,   1,   1,   1,   2,   1,   0.5, 1,   0.5, 0.5, 0.5, 2,   0,   1,   2,   2,   0.5],
+  // どく
+  [1,   1,   1,   1,   2,   1,   1,   0.5, 0.5, 1,   1,   1,   0.5, 0.5, 1,   1,   0,   2  ],
+  // じめん
+  [1,   2,   1,   2,   0.5, 1,   1,   2,   1,   0,   1,   0.5, 2,   1,   1,   1,   2,   1  ],
+  // ひこう
+  [1,   1,   1,   0.5, 2,   1,   2,   1,   1,   1,   1,   2,   0.5, 1,   1,   1,   0.5, 1  ],
+  // エスパー
+  [1,   1,   1,   1,   1,   1,   2,   2,   1,   1,   0.5, 1,   1,   1,   1,   0,   0.5, 1  ],
+  // むし
+  [1,   0.5, 1,   1,   2,   1,   0.5, 0.5, 1,   0.5, 2,   1,   1,   0.5, 1,   2,   0.5, 0.5],
+  // いわ
+  [1,   2,   1,   1,   1,   2,   0.5, 1,   0.5, 2,   1,   2,   1,   1,   1,   1,   0.5, 1  ],
+  // ゴースト
+  [0,   1,   1,   1,   1,   1,   1,   1,   1,   1,   2,   1,   1,   2,   1,   0.5, 1,   1  ],
+  // ドラゴン
+  [1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   2,   1,   0.5, 0  ],
+  // あく
+  [1,   1,   1,   1,   1,   1,   0.5, 1,   1,   1,   2,   1,   1,   2,   1,   0.5, 1,   0.5],
+  // はがね
+  [1,   0.5, 0.5, 0.5, 1,   2,   1,   1,   1,   1,   1,   1,   2,   1,   1,   1,   0.5, 2  ],
+  // フェアリー
+  [1,   0.5, 1,   1,   1,   1,   2,   0.5, 1,   1,   1,   1,   1,   1,   2,   2,   0.5, 1  ]
+];
+
+const TEMPLATES = {
+  rps: {
+    rowNames: ['グー', 'チョキ', 'パー'],
+    colNames: ['グー', 'チョキ', 'パー'],
+    values: [
+      [ 0,  1, -1],
+      [-1,  0,  1],
+      [ 1, -1,  0]
+    ]
+  },
+  rps_asymm: {
+    rowNames: ['グー', 'チョキ', 'パー'],
+    colNames: ['グー', 'チョキ', 'パー'],
+    values: [
+      [  0, 10, -1],
+      [-10,  0,  1],
+      [  1, -1,  0]
+    ]
+  },
+  pokemon: {
+    rowNames: [...POKE_TYPES],
+    colNames: [...POKE_TYPES],
+    values: POKE_CHART.map(row => [...row])
+  }
+};
+
+// ================================================================
+// Matrix rendering
+// ================================================================
+function renderMatrix() {
+  const table = document.getElementById('matrixTable');
+  const { rows, cols, rowNames, colNames, values } = state;
+
+  let html = '<thead><tr>';
+  // Top-left corner cell
+  html += '<th class="corner-cell" style="min-width:90px;"></th>';
+  // Column headers (strategy names)
+  for (let j = 0; j < cols; j++) {
+    html += `<th class="col-header-row">
+      <input class="name-input" type="text" value="${esc(colNames[j])}"
+        oninput="state.colNames[${j}]=this.value"
+        placeholder="列${j+1}">
+    </th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (let i = 0; i < rows; i++) {
+    html += '<tr>';
+    // Row header (strategy name)
+    html += `<td class="row-header-col">
+      <input class="name-input" type="text" value="${esc(rowNames[i])}"
+        oninput="state.rowNames[${i}]=this.value"
+        placeholder="行${i+1}">
+    </td>`;
+    // Value cells
+    for (let j = 0; j < cols; j++) {
+      html += `<td>
+        <input class="val-input" type="number" step="any"
+          value="${values[i][j]}"
+          oninput="onCellInput(this,${i},${j})"
+          data-row="${i}" data-col="${j}">
+      </td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+function onCellInput(el, i, j) {
+  const v = parseFloat(el.value);
+  if (isNaN(v)) {
+    el.classList.add('invalid');
+  } else {
+    el.classList.remove('invalid');
+    state.values[i][j] = v;
+  }
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// ================================================================
+// Matrix resize
+// ================================================================
+function syncStateFromDOM() {
+  const inputs = document.querySelectorAll('.val-input');
+  inputs.forEach(el => {
+    const i = parseInt(el.dataset.row);
+    const j = parseInt(el.dataset.col);
+    const v = parseFloat(el.value);
+    if (!isNaN(v)) state.values[i][j] = v;
+  });
+}
+
+function addRow() {
+  if (state.rows >= MAX_DIM) return showError(`最大 ${MAX_DIM} 行まで対応しています。`);
+  syncStateFromDOM();
+  state.rows++;
+  state.rowNames.push(`戦略${state.rows}`);
+  state.values.push(Array(state.cols).fill(0));
+  renderMatrix();
+}
+
+function removeRow() {
+  if (state.rows <= 1) return showError('行は1つ以上必要です。');
+  syncStateFromDOM();
+  state.rows--;
+  state.rowNames.pop();
+  state.values.pop();
+  renderMatrix();
+}
+
+function addCol() {
+  if (state.cols >= MAX_DIM) return showError(`最大 ${MAX_DIM} 列まで対応しています。`);
+  syncStateFromDOM();
+  state.cols++;
+  state.colNames.push(`戦略${state.cols}`);
+  state.values.forEach(row => row.push(0));
+  renderMatrix();
+}
+
+function removeCol() {
+  if (state.cols <= 1) return showError('列は1つ以上必要です。');
+  syncStateFromDOM();
+  state.cols--;
+  state.colNames.pop();
+  state.values.forEach(row => row.pop());
+  renderMatrix();
+}
+
+// ================================================================
+// Template loading
+// ================================================================
+function loadTemplate(key) {
+  if (!key) return;
+  const tmpl = TEMPLATES[key];
+  if (!tmpl) return;
+  state.rows     = tmpl.values.length;
+  state.cols     = tmpl.values[0].length;
+  state.rowNames = tmpl.rowNames.map(s => s);
+  state.colNames = tmpl.colNames.map(s => s);
+  state.values   = tmpl.values.map(row => [...row]);
+  renderMatrix();
+  clearResults();
+  clearError();
+}
+
+// ================================================================
+// LP solver helpers
+// ================================================================
+function getSolver() {
+  if (typeof solver !== 'undefined') return solver;
+  if (typeof window !== 'undefined' && window.solver) return window.solver;
+  throw new Error('LP ソルバーが読み込まれていません。ページを再読み込みしてください。');
+}
+
+/**
+ * Build LP model for Player 1:
+ *   Minimize  Σ p_i
+ *   s.t.      Σ_i A'[i][j] * p_i >= 1  ∀j
+ *             p_i >= 0
+ */
+function buildLP1(Ap, m, n) {
+  const constraints = {};
+  for (let j = 0; j < n; j++) constraints[`c${j}`] = { min: 1 };
+
+  const variables = {};
+  for (let i = 0; i < m; i++) {
+    const varObj = { obj: 1 };
+    for (let j = 0; j < n; j++) varObj[`c${j}`] = Ap[i][j];
+    variables[`p${i}`] = varObj;
+  }
+
+  return { optimize: 'obj', opType: 'min', constraints, variables };
+}
+
+/**
+ * Build LP model for Player 2:
+ *   Maximize  Σ q_j
+ *   s.t.      Σ_j A'[i][j] * q_j <= 1  ∀i
+ *             q_j >= 0
+ */
+function buildLP2(Ap, m, n) {
+  const constraints = {};
+  for (let i = 0; i < m; i++) constraints[`r${i}`] = { max: 1 };
+
+  const variables = {};
+  for (let j = 0; j < n; j++) {
+    const varObj = { obj: 1 };
+    for (let i = 0; i < m; i++) varObj[`r${i}`] = Ap[i][j];
+    variables[`q${j}`] = varObj;
+  }
+
+  return { optimize: 'obj', opType: 'max', constraints, variables };
+}
+
+/**
+ * Solve zero-sum game by LP.
+ * Returns { p1Probs, p2Probs, gameValue }
+ */
+function solveGame(A) {
+  const m = A.length;
+  const n = A[0].length;
+
+  // Shift so all values are strictly positive
+  const minVal = Math.min(...A.flatMap(r => r));
+  const C = minVal <= 0 ? -minVal + LP_EPSILON : 0;
+  const Ap = A.map(row => row.map(v => v + C));
+
+  const lpSolver = getSolver();
+
+  const res1 = lpSolver.Solve(buildLP1(Ap, m, n));
+  if (!res1.feasible) throw new Error('プレイヤー1のLPが実行不可能です（行列を確認してください）。');
+
+  const res2 = lpSolver.Solve(buildLP2(Ap, m, n));
+  if (!res2.feasible) throw new Error('プレイヤー2のLPが実行不可能です（行列を確認してください）。');
+
+  const sumP  = res1.result;          // = Σp_i = 1/v'
+  if (!sumP || sumP <= 0) throw new Error('LP の解が異常です（sumP ≤ 0）。行列を確認してください。');
+  const vPrime = 1 / sumP;
+  const gameValue = vPrime - C;
+
+  const p1Probs = [];
+  for (let i = 0; i < m; i++) p1Probs.push((res1[`p${i}`] || 0) * vPrime);
+
+  // Use res2 result for Player 2 (by LP duality, 1/res2.result ≈ vPrime)
+  const sumQ   = res2.result;
+  const vPrime2 = sumQ > 0 ? 1 / sumQ : vPrime;
+  const p2Probs = [];
+  for (let j = 0; j < n; j++) p2Probs.push((res2[`q${j}`] || 0) * vPrime2);
+
+  return { p1Probs, p2Probs, gameValue };
+}
+
+// ================================================================
+// Calculate & display results
+// ================================================================
+function calculate() {
+  clearError();
+  syncStateFromDOM();
+
+  // Validate
+  const { rows, cols, values, rowNames, colNames } = state;
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      if (typeof values[i][j] !== 'number' || isNaN(values[i][j])) {
+        return showError(`セル [${rowNames[i]} × ${colNames[j]}] に無効な値があります。すべてのセルに数値を入力してください。`);
+      }
+    }
+  }
+
+  let result;
+  try {
+    result = solveGame(values);
+  } catch (e) {
+    return showError(e.message);
+  }
+
+  displayResults(result.p1Probs, result.p2Probs, result.gameValue, rowNames, colNames);
+}
+
+function displayResults(p1Probs, p2Probs, gameValue, rowNames, colNames) {
+  const sec = document.getElementById('resultsSection');
+
+  // Game value
+  document.getElementById('gameValueDisplay').textContent = gameValue.toFixed(4);
+  const absG = Math.abs(gameValue);
+  let note = '';
+  if (absG < BALANCE_THRESHOLD) note = 'このゲームは均衡状態で引き分けとなります。';
+  else if (gameValue > 0) note = `均衡状態でプレイヤー1は平均 ${gameValue.toFixed(4)} の利得を得ます。`;
+  else                   note = `均衡状態でプレイヤー2は平均 ${(-gameValue).toFixed(4)} の利得を得ます。`;
+  document.getElementById('gameValueNote').textContent = note;
+
+  // Charts & lists
+  renderPlayerResult('chart1', 'stratList1', p1Probs, rowNames, 1, 'chart1Instance');
+  renderPlayerResult('chart2', 'stratList2', p2Probs, colNames, 2, 'chart2Instance');
+
+  // Show with animation
+  sec.style.display = 'block';
+  requestAnimationFrame(() => requestAnimationFrame(() => sec.classList.add('visible')));
+
+  // Scroll into view
+  setTimeout(() => sec.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+}
+
+function renderPlayerResult(chartId, listId, probs, names, playerNum, instanceKey) {
+  const total = probs.reduce((s, p) => s + p, 0);
+
+  // Normalize — if total is effectively zero, display uniform distribution as fallback
+  const norm = total > LP_EPSILON
+    ? probs.map(p => Math.max(0, p / total))
+    : probs.map(() => 1 / probs.length);
+
+  // Destroy previous chart instance stored on window (allows cross-call cleanup)
+  if (window[instanceKey]) { window[instanceKey].destroy(); window[instanceKey] = null; }
+
+  const ctx = document.getElementById(chartId).getContext('2d');
+
+  const palette1 = ['#a855f7','#7c3aed','#6d28d9','#c084fc','#9333ea','#4c1d95','#d8b4fe','#8b5cf6'];
+  const palette2 = ['#38bdf8','#0ea5e9','#0284c7','#7dd3fc','#0369a1','#082f49','#bae6fd','#0891b2'];
+  const palette = playerNum === 1 ? palette1 : palette2;
+
+  const bgColors = norm.map((p, i) =>
+    p >= STRATEGY_THRESHOLD ? palette[i % palette.length] : 'rgba(100,116,139,0.3)'
+  );
+
+  window[instanceKey] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: names,
+      datasets: [{
+        label: `プレイヤー${playerNum}の確率`,
+        data: norm.map(p => parseFloat((p * 100).toFixed(3))),
+        backgroundColor: bgColors,
+        borderRadius: 5,
+        borderSkipped: false
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.parsed.y.toFixed(2)} %`
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          ticks: { color: '#94a3b8', callback: v => v + '%' },
+          grid:  { color: 'rgba(255,255,255,.06)' }
+        },
+        x: {
+          ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 0 },
+          grid:  { display: false }
+        }
+      }
+    }
+  });
+
+  // Strategy list
+  const ul = document.getElementById(listId);
+  ul.innerHTML = '';
+  norm.forEach((p, i) => {
+    const isActive = p >= STRATEGY_THRESHOLD;
+    const pct = (p * 100).toFixed(2);
+    const li = document.createElement('li');
+    li.className = 'strat-item' + (isActive ? '' : ' zero-strat');
+    li.innerHTML = `
+      <span class="strat-name" title="${esc(names[i])}">${esc(names[i])}</span>
+      <div class="strat-bar-wrap">
+        <div class="strat-bar-fill" style="width:${pct}%"></div>
+      </div>
+      <span class="strat-prob">${pct}%</span>
+      <span class="badge ${isActive ? 'badge-opt' : 'badge-zero'}">${isActive ? '採用' : '不採用'}</span>
+    `;
+    ul.appendChild(li);
+  });
+}
+
+// ================================================================
+// LocalStorage
+// ================================================================
+const LS_KEY = 'nash_ui_saves';
+
+function loadSaves() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function persistSaves(saves) {
+  localStorage.setItem(LS_KEY, JSON.stringify(saves));
+}
+
+function saveMatrix() {
+  syncStateFromDOM();
+  const nameEl = document.getElementById('saveName');
+  const name = nameEl.value.trim();
+  if (!name) return showError('保存名を入力してください。');
+
+  const saves = loadSaves();
+  saves[name] = {
+    rows: state.rows,
+    cols: state.cols,
+    rowNames: [...state.rowNames],
+    colNames: [...state.colNames],
+    values: state.values.map(r => [...r]),
+    savedAt: new Date().toISOString()
+  };
+  persistSaves(saves);
+  nameEl.value = '';
+  renderSavedList();
+  clearError();
+}
+
+function restoreMatrix(name) {
+  const saves = loadSaves();
+  const s = saves[name];
+  if (!s) return;
+  state.rows     = s.rows;
+  state.cols     = s.cols;
+  state.rowNames = [...s.rowNames];
+  state.colNames = [...s.colNames];
+  state.values   = s.values.map(r => [...r]);
+  renderMatrix();
+  clearResults();
+  clearError();
+  document.getElementById('templateSelect').value = '';
+}
+
+function deleteMatrix(name) {
+  const saves = loadSaves();
+  delete saves[name];
+  persistSaves(saves);
+  renderSavedList();
+}
+
+function renderSavedList() {
+  const saves = loadSaves();
+  const keys  = Object.keys(saves);
+  const cont  = document.getElementById('savedList');
+
+  if (keys.length === 0) {
+    cont.innerHTML = '<p class="no-saved">保存されたデータはありません。</p>';
+    return;
+  }
+
+  let html = '<div class="saved-grid">';
+  keys.forEach(name => {
+    const s = saves[name];
+    const dt = s.savedAt ? new Date(s.savedAt).toLocaleString('ja-JP') : '';
+    html += `
+      <div class="saved-item" onclick="restoreMatrix(${JSON.stringify(name)})">
+        <button class="saved-del-btn" title="削除"
+          onclick="event.stopPropagation();deleteMatrix(${JSON.stringify(name)})">✕</button>
+        <div class="saved-item-name">${esc(name)}</div>
+        <div class="saved-item-info">${s.rows}×${s.cols}　${dt}</div>
+      </div>
+    `;
+  });
+  html += '</div>';
+  cont.innerHTML = html;
+}
+
+// ================================================================
+// Error / UI helpers
+// ================================================================
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.innerHTML = `<div class="error-banner">⚠️ ${esc(msg)}</div>`;
+}
+
+function clearError() {
+  document.getElementById('errorMsg').innerHTML = '';
+}
+
+function clearResults() {
+  const sec = document.getElementById('resultsSection');
+  sec.classList.remove('visible');
+  sec.style.display = 'none';
+  if (window.chart1Instance) { window.chart1Instance.destroy(); window.chart1Instance = null; }
+  if (window.chart2Instance) { window.chart2Instance.destroy(); window.chart2Instance = null; }
+}
+
+// ================================================================
+// Bootstrap
+// ================================================================
+renderMatrix();
+renderSavedList();
+</script>
+</body>
+</html>
