@@ -290,6 +290,7 @@
           <option value="rps">標準のじゃんけん (3×3)</option>
           <option value="rps_asymm">非対称じゃんけん (3×3・グー報酬×10)</option>
           <option value="pokemon">ポケモンタイプ相性（単一タイプ 18×18）</option>
+          <option value="pokemon_dual">ポケモンタイプ相性（複合タイプ受け 18×171）</option>
         </select>
       </div>
       <div>
@@ -305,6 +306,10 @@
           <button class="btn-secondary btn-sm" onclick="addCol()">＋ 列追加</button>
           <button class="btn-secondary btn-sm" onclick="removeCol()">－ 列削除</button>
         </div>
+      </div>
+      <div>
+        <span class="ctrl-label">リセット</span>
+        <button class="btn-danger btn-sm" onclick="clearMatrix()">🗑️ クリア</button>
       </div>
     </div>
   </div>
@@ -369,7 +374,7 @@
 // ================================================================
 // Data & state
 // ================================================================
-const MAX_DIM = 30;
+const MAX_DIM = 200;
 
 let state = {
   rows: 3,
@@ -438,6 +443,29 @@ const POKE_CHART = [
   [1,   0.5, 1,   1,   1,   1,   2,   0.5, 1,   1,   1,   1,   1,   1,   2,   2,   0.5, 1  ]
 ];
 
+// Build composite (dual) type template: 18 attackers × 171 defenders
+// Defenders = all (type1, type2) combos with type1 <= type2 index
+function buildPokemonDualTemplate() {
+  const defCombos = [];
+  const defNames  = [];
+  for (let i = 0; i < 18; i++) {
+    for (let j = i; j < 18; j++) {
+      defCombos.push([i, j]);
+      defNames.push(i === j ? POKE_TYPES[i] : `${POKE_TYPES[i]}/${POKE_TYPES[j]}`);
+    }
+  }
+
+  const values = POKE_TYPES.map((_, atk) =>
+    defCombos.map(([d1, d2]) =>
+      d1 === d2
+        ? POKE_CHART[atk][d1]                        // single type
+        : POKE_CHART[atk][d1] * POKE_CHART[atk][d2] // dual type: multiply
+    )
+  );
+
+  return { rowNames: [...POKE_TYPES], colNames: defNames, values };
+}
+
 const TEMPLATES = {
   rps: {
     rowNames: ['グー', 'チョキ', 'パー'],
@@ -461,6 +489,12 @@ const TEMPLATES = {
     rowNames: [...POKE_TYPES],
     colNames: [...POKE_TYPES],
     values: POKE_CHART.map(row => [...row])
+  },
+  get pokemon_dual() {
+    // Computed lazily on first access to avoid eager 18×171 matrix at load time
+    const tmpl = buildPokemonDualTemplate();
+    Object.defineProperty(this, 'pokemon_dual', { value: tmpl, configurable: true });
+    return tmpl;
   }
 };
 
@@ -909,6 +943,18 @@ function clearResults() {
   sec.style.display = 'none';
   if (window.chart1Instance) { window.chart1Instance.destroy(); window.chart1Instance = null; }
   if (window.chart2Instance) { window.chart2Instance.destroy(); window.chart2Instance = null; }
+}
+
+function clearMatrix() {
+  state.rows     = 1;
+  state.cols     = 1;
+  state.rowNames = ['戦略1'];
+  state.colNames = ['戦略1'];
+  state.values   = [[0]];
+  document.getElementById('templateSelect').value = '';
+  renderMatrix();
+  clearResults();
+  clearError();
 }
 
 // ================================================================
