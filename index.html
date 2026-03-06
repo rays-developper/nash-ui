@@ -102,6 +102,7 @@
     .btn-danger:hover { background: #dc2626; }
     .btn-sm { padding: .25rem .6rem; font-size: .8rem; }
     .btn-calc { padding: .75rem 2.5rem; font-size: 1.05rem; font-weight: 700; letter-spacing: .02em; }
+    .sort-btn.active { background: var(--accent); color: #fff; }
 
     /* ── Controls row ── */
     .controls-grid { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
@@ -339,7 +340,14 @@
 
   <!-- ── Results ── -->
   <div class="card" id="resultsSection" style="display:none;">
-    <div class="card-title">🏆 計算結果</div>
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <div class="card-title" style="margin-bottom:0;">🏆 計算結果</div>
+      <div style="display:flex;align-items:center;gap:.5rem;">
+        <span class="ctrl-label" style="margin:0;">並び順：</span>
+        <button id="sortAdoption" class="btn-secondary btn-sm sort-btn" onclick="setSortMode('adoption')">採用率順</button>
+        <button id="sortDefinition" class="btn-secondary btn-sm sort-btn" onclick="setSortMode('definition')">定義順</button>
+      </div>
+    </div>
 
     <div class="game-value-box">
       <div class="label">ゲームの価値（期待利得）</div>
@@ -392,6 +400,10 @@ let state = {
 const LP_EPSILON        = 1e-6;  // minimum shift to ensure strictly-positive matrix
 const STRATEGY_THRESHOLD = 1e-4; // probability below which a strategy is considered "not used"
 const BALANCE_THRESHOLD  = 1e-6; // game-value below which the game is considered balanced
+
+// Sort state
+let sortMode    = 'adoption'; // 'adoption' | 'definition'
+let lastResults = null;       // last calculated results for re-sorting
 
 // ================================================================
 // Templates
@@ -742,6 +754,14 @@ function calculate() {
 function displayResults(p1Probs, p2Probs, gameValue, rowNames, colNames) {
   const sec = document.getElementById('resultsSection');
 
+  // Store for re-sort
+  lastResults = { p1Probs, p2Probs, rowNames, colNames };
+
+  // Reset sort mode to adoption-rate descending on each new calculation
+  sortMode = 'adoption';
+  document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+  document.getElementById('sortAdoption').classList.add('active');
+
   // Game value
   document.getElementById('gameValueDisplay').textContent = gameValue.toFixed(4);
   const absG = Math.abs(gameValue);
@@ -771,6 +791,15 @@ function renderPlayerResult(chartId, listId, probs, names, playerNum, instanceKe
     ? probs.map(p => Math.max(0, p / total))
     : probs.map(() => 1 / probs.length);
 
+  // Build index order based on current sortMode
+  const indices = norm.map((_, i) => i);
+  if (sortMode === 'adoption') {
+    indices.sort((a, b) => norm[b] - norm[a]);
+  }
+  // 'definition' mode: indices stay in original order (0, 1, 2, ...)
+  const sortedNorm  = indices.map(i => norm[i]);
+  const sortedNames = indices.map(i => names[i]);
+
   // Destroy previous chart instance stored on window (allows cross-call cleanup)
   if (window[instanceKey]) { window[instanceKey].destroy(); window[instanceKey] = null; }
 
@@ -780,17 +809,17 @@ function renderPlayerResult(chartId, listId, probs, names, playerNum, instanceKe
   const palette2 = ['#38bdf8','#0ea5e9','#0284c7','#7dd3fc','#0369a1','#082f49','#bae6fd','#0891b2'];
   const palette = playerNum === 1 ? palette1 : palette2;
 
-  const bgColors = norm.map((p, i) =>
+  const bgColors = sortedNorm.map((p, i) =>
     p >= STRATEGY_THRESHOLD ? palette[i % palette.length] : 'rgba(100,116,139,0.3)'
   );
 
   window[instanceKey] = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: names,
+      labels: sortedNames,
       datasets: [{
         label: `プレイヤー${playerNum}の確率`,
-        data: norm.map(p => parseFloat((p * 100).toFixed(3))),
+        data: sortedNorm.map(p => parseFloat((p * 100).toFixed(3))),
         backgroundColor: bgColors,
         borderRadius: 5,
         borderSkipped: false
@@ -824,13 +853,13 @@ function renderPlayerResult(chartId, listId, probs, names, playerNum, instanceKe
   // Strategy list
   const ul = document.getElementById(listId);
   ul.innerHTML = '';
-  norm.forEach((p, i) => {
+  sortedNorm.forEach((p, i) => {
     const isActive = p >= STRATEGY_THRESHOLD;
     const pct = (p * 100).toFixed(2);
     const li = document.createElement('li');
     li.className = 'strat-item' + (isActive ? '' : ' zero-strat');
     li.innerHTML = `
-      <span class="strat-name" title="${esc(names[i])}">${esc(names[i])}</span>
+      <span class="strat-name" title="${esc(sortedNames[i])}">${esc(sortedNames[i])}</span>
       <div class="strat-bar-wrap">
         <div class="strat-bar-fill" style="width:${pct}%"></div>
       </div>
@@ -839,6 +868,20 @@ function renderPlayerResult(chartId, listId, probs, names, playerNum, instanceKe
     `;
     ul.appendChild(li);
   });
+}
+
+// ================================================================
+// Sort mode toggle
+// ================================================================
+function setSortMode(mode) {
+  sortMode = mode;
+  document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+  document.getElementById(mode === 'adoption' ? 'sortAdoption' : 'sortDefinition').classList.add('active');
+  if (lastResults) {
+    const { p1Probs, p2Probs, rowNames, colNames } = lastResults;
+    renderPlayerResult('chart1', 'stratList1', p1Probs, rowNames, 1, 'chart1Instance');
+    renderPlayerResult('chart2', 'stratList2', p2Probs, colNames, 2, 'chart2Instance');
+  }
 }
 
 // ================================================================
@@ -943,6 +986,7 @@ function clearResults() {
   sec.style.display = 'none';
   if (window.chart1Instance) { window.chart1Instance.destroy(); window.chart1Instance = null; }
   if (window.chart2Instance) { window.chart2Instance.destroy(); window.chart2Instance = null; }
+  lastResults = null;
 }
 
 function clearMatrix() {
