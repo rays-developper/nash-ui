@@ -292,6 +292,7 @@
           <option value="rps_asymm">非対称じゃんけん (3×3・グー報酬×10)</option>
           <option value="pokemon">ポケモンタイプ相性（単一タイプ 18×18）</option>
           <option value="pokemon_dual">ポケモンタイプ相性（複合タイプ受け 18×171）</option>
+          <option value="tcg">カードゲームのデッキ相性 (4×4)</option>
         </select>
       </div>
       <div>
@@ -507,6 +508,16 @@ const TEMPLATES = {
     const tmpl = buildPokemonDualTemplate();
     Object.defineProperty(this, 'pokemon_dual', { value: tmpl, configurable: true });
     return tmpl;
+  },
+  tcg: {
+    rowNames: ['アグロ', 'ミッドレンジ', 'コントロール', 'コンボ'],
+    colNames: ['アグロ', 'ミッドレンジ', 'コントロール', 'コンボ'],
+    values: [
+      [50, 45, 35, 70], // アグロの勝率
+      [55, 50, 45, 60], // ミッドレンジの勝率
+      [65, 55, 50, 25], // コントロールの勝率
+      [30, 40, 75, 50]  // コンボの勝率
+    ]
   }
 };
 
